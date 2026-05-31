@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
+.venv/
+venv/
 inspection_candidates.db
 inspection_candidates.csv
