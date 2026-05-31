@@ -71,7 +71,53 @@ def _normalize(feature: dict, fieldmap: dict) -> dict:
     return feature
 
 
+@retry(stop=stop_after_attempt(4), wait=wait_exponential(min=2, max=30))
+def _fetch_join_page(join: dict, offset: int) -> dict:
+    resp = requests.get(join["url"], params={
+        "where": join.get("where", "1=1"),
+        "outFields": "*",
+        "returnGeometry": "false",
+        "resultOffset": offset,
+        "resultRecordCount": PAGE_SIZE,
+        "f": "json",
+    }, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _fetch_yrblt_lookup(join: dict) -> dict:
+    """Build {parcel-id -> year built} from a separate building-info layer."""
+    yf = join.get("yrblt_field", "YEARBUILT")
+    keys = join.get("secondary_keys", ["PID", "PARCELID", "PROPTYID"])
+    lookup, offset = {}, 0
+    while True:
+        logger.info(f"  year-built lookup (offset={offset}, have {len(lookup)})")
+        data = _fetch_join_page(join, offset)
+        feats = data.get("features", [])
+        if not feats:
+            break
+        for f in feats:
+            a = f.get("attributes", {}) or {}
+            yr = a.get(yf)
+            if not yr:
+                continue
+            for k in keys:
+                v = a.get(k)
+                if v not in (None, ""):
+                    lookup[str(v).strip()] = yr
+        if not data.get("exceededTransferLimit"):
+            break
+        offset += PAGE_SIZE
+        time.sleep(0.2)
+    logger.success(f"  year-built lookup ready: {len(lookup)} parcels")
+    return lookup
+
+
 def _fetch_source(source: dict) -> list[dict]:
+    join = source.get("yrblt_join")
+    yr_lookup = _fetch_yrblt_lookup(join) if join else None
+    primary_keys = (join or {}).get("primary_keys", [])
+
     feats, offset = [], 0
     while True:
         logger.info(f"  fetching {source['name']} (offset={offset})")
@@ -79,7 +125,19 @@ def _fetch_source(source: dict) -> list[dict]:
         page = data.get("features", [])
         if not page:
             break
-        feats.extend(_normalize(f, source["map"]) for f in page)
+        for f in page:
+            raw = dict(f.get("attributes", {}) or {})
+            nf = _normalize(f, source["map"])
+            if yr_lookup is not None:
+                yr = None
+                for k in primary_keys:
+                    v = raw.get(k)
+                    if v not in (None, ""):
+                        yr = yr_lookup.get(str(v).strip())
+                        if yr:
+                            break
+                nf["attributes"]["YRBLT"] = yr
+            feats.append(nf)
         logger.info(f"    +{len(page)} ({source['name']} total {len(feats)})")
         if not data.get("exceededTransferLimit"):
             break

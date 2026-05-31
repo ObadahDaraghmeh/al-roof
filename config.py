@@ -84,16 +84,45 @@ SOURCES = [
     },
     {
         "name": "Hamilton (Cincinnati)",
-        "enabled": False,
-        "url": "",                       # CAGIS parcel polygon FeatureServer .../query
+        "enabled": True,
+        # Primary layer: parcel polygons joined to the auditor real-estate view
+        # (market value, owner, address, land-use class). Year built is NOT in
+        # this layer — it comes from the building-info layer via yrblt_join.
+        "url": (
+            "https://cagisonline.hamilton-co.org/arcgis/rest/services"
+            "/COUNTYWIDE/HCE_Parcels_With_Auditor_Data/MapServer/0/query"
+        ),
         "in_sr": 4326,
         "bbox": SERVICE_AREA_BBOX_LATLON,
-        "where": "1=1",
+        # Ohio residential land-use classes are the 500s; the value floor trims
+        # vacant land and anything under $200k.
+        "where": "CAGIS.AUDREAL_VW.CLASS >= 500 AND CAGIS.AUDREAL_VW.CLASS < 600",
         "out_fields": "*",
         "map": {
-            "PIN": "", "OWNER": "", "YRBLT": "",
-            "ADRNO": "", "ADRSTR": "", "ADRSUF": "",
-            "LOCATION": "", "AuditorLink": "",
+            "PIN": "HCE.ParcelFabric_Parcels.NAME",
+            "OWNER": "CAGIS.AUDREAL_VW.OWNNM1",
+            "YRBLT": "",                       # filled from yrblt_join below
+            "ADRNO": "CAGIS.AUDREAL_VW.ADDRNO",
+            "ADRSTR": "CAGIS.AUDREAL_VW.ADDRST",
+            "ADRSUF": "CAGIS.AUDREAL_VW.ADDRSF",
+            "LOCATION": "",
+            "AuditorLink": "",
+            "VALUE": "CAGIS.AUDREAL_VW.MKT_TOTAL_VAL",
+        },
+        # Year built lives in a separate building-info layer; look it up by
+        # parcel id and attach it to each parcel.
+        "yrblt_join": {
+            "url": (
+                "https://cagisonline.hamilton-co.org/arcgis/rest/services"
+                "/COUNTYWIDE/AuditorParcelInformation/MapServer/17/query"
+            ),
+            "yrblt_field": "YEARBUILT",
+            "secondary_keys": ["PID", "PARCELID", "PROPTYID", "AUDPTYID"],
+            "primary_keys": [
+                "HCE.ParcelFabric_Parcels.NAME",
+                "CAGIS.AUDREAL_VW.PROPTYID",
+                "CAGIS.AUDREAL_VW.AUDPTYID",
+            ],
         },
     },
     {
