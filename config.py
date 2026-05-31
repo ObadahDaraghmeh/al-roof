@@ -13,35 +13,101 @@ What this tool is NOT:
     There is deliberately no property-value / income input anywhere.
 """
 
-# ── Butler County parcels (public county auditor data, served via ArcGIS) ─────
-# Inherited from your existing setup. Confirm the layer is still live before a run.
-BUTLER_PARCEL_URL = (
-    "https://services5.arcgis.com/ZpzXpUOckwsAhLFh/arcgis/rest/services"
-    "/Monroe_Parcels_in_Butler_County/FeatureServer/2/query"
-)
+# ── Parcel data sources (one per county; public auditor/GIS ArcGIS services) ──
+# Every county GIS service names its fields differently, so each source maps the
+# county's OWN field names onto the canonical keys this tool expects downstream:
+#     PIN, OWNER, YRBLT, ADRNO, ADRSTR, ADRSUF, LOCATION, AuditorLink
+#
+# To add or verify a county, on a machine WITH internet run:
+#     python3 inspect_service.py <FeatureServer-or-layer-URL>
+# It prints the layer's field names + a sample record. Copy the real field names
+# into that county's "map" below, set a residential "where" filter, enabled=True.
 
-# Parcel polygons are stored in EPSG:3735 (Ohio State Plane South, US feet).
-# We send the service-area box in 3735 but ask the server to RETURN geometry
-# in lat/lon (EPSG:4326) so parcel centroids compare directly to storm coords.
-PARCEL_SR_FEET   = 3735
-OUTPUT_SR_LATLON = 4326
+OUTPUT_SR_LATLON = 4326   # ask every service to RETURN geometry as lon/lat
 
-# ── Service area (EPSG:3735 feet) ─────────────────────────────────────────────
-# Default box ~ West Chester / Liberty Twp. Edit to match where you actually work.
-SERVICE_AREA_BBOX = {
-    "xmin": 1390000,
-    "ymin": 465000,
-    "xmax": 1470000,
-    "ymax": 540000,
+# Service-area envelope in lon/lat (EPSG:4326), ~Cincinnati metro. Sent to every
+# service with inSR=4326 so we don't need each county's native projection.
+SERVICE_AREA_BBOX_LATLON = {
+    "xmin": -84.85,   # west longitude
+    "ymin":  39.05,   # south latitude
+    "xmax": -84.15,   # east longitude
+    "ymax":  39.65,   # north latitude
 }
+
+SOURCES = [
+    {
+        "name": "Butler (Monroe)",
+        "enabled": True,
+        "url": (
+            "https://services5.arcgis.com/ZpzXpUOckwsAhLFh/arcgis/rest/services"
+            "/Monroe_Parcels_in_Butler_County/FeatureServer/2/query"
+        ),
+        # Confirmed working. This service is set up in EPSG:3735 (Ohio State
+        # Plane South, US feet), so it keeps its original feet bbox.
+        "in_sr": 3735,
+        "bbox": {"xmin": 1390000, "ymin": 465000, "xmax": 1470000, "ymax": 540000},
+        "where": "LUC IN ('510','511','512')",   # 510/511/512 = 1-3 family homes
+        "out_fields": "PIN,OWNER,ADRNO,ADRSTR,ADRSUF,LOCATION,YRBLT,LUC,AuditorLink",
+        "map": {
+            "PIN": "PIN", "OWNER": "OWNER", "YRBLT": "YRBLT",
+            "ADRNO": "ADRNO", "ADRSTR": "ADRSTR", "ADRSUF": "ADRSUF",
+            "LOCATION": "LOCATION", "AuditorLink": "AuditorLink",
+        },
+    },
+
+    # ── Neighboring counties: SCAFFOLDED but DISABLED until verified. ──────────
+    # Fill url + map (and a residential `where`) from inspect_service.py output,
+    # then flip enabled=True. They share the lat/lon metro box with inSR=4326.
+    {
+        "name": "Warren (Mason/Lebanon)",
+        "enabled": False,
+        # Candidate (mirrored on Butler's auditor host) — confirm the layer id:
+        #   https://maps.butlercountyauditor.org/arcgis/rest/services/WarrenCounty/MapServer
+        "url": "",                       # e.g. ".../WarrenCounty/MapServer/<id>/query"
+        "in_sr": 4326,
+        "bbox": SERVICE_AREA_BBOX_LATLON,
+        "where": "1=1",                  # refine to residential once you see the codes
+        "out_fields": "*",
+        "map": {                         # ← fill the right side with real field names
+            "PIN": "", "OWNER": "", "YRBLT": "",
+            "ADRNO": "", "ADRSTR": "", "ADRSUF": "",
+            "LOCATION": "", "AuditorLink": "",
+        },
+    },
+    {
+        "name": "Hamilton (Cincinnati)",
+        "enabled": False,
+        "url": "",                       # CAGIS parcel polygon FeatureServer .../query
+        "in_sr": 4326,
+        "bbox": SERVICE_AREA_BBOX_LATLON,
+        "where": "1=1",
+        "out_fields": "*",
+        "map": {
+            "PIN": "", "OWNER": "", "YRBLT": "",
+            "ADRNO": "", "ADRSTR": "", "ADRSUF": "",
+            "LOCATION": "", "AuditorLink": "",
+        },
+    },
+    {
+        "name": "Montgomery (Dayton)",
+        "enabled": False,
+        "url": "",
+        "in_sr": 4326,
+        "bbox": SERVICE_AREA_BBOX_LATLON,
+        "where": "1=1",
+        "out_fields": "*",
+        "map": {
+            "PIN": "", "OWNER": "", "YRBLT": "",
+            "ADRNO": "", "ADRSTR": "", "ADRSUF": "",
+            "LOCATION": "", "AuditorLink": "",
+        },
+    },
+]
 
 # Approximate center of your service area in (lat, lon). Used only to discard
 # storm reports from the rest of the country before matching. Cincinnati, OH:
 SERVICE_AREA_CENTER_LATLON = (39.10, -84.51)
 STORM_REGION_RADIUS_MI     = 50
-
-# Residential land-use codes: 510 single-family, 511 two-family, 512 three-family
-RESIDENTIAL_LUC = ("510", "511", "512")
 
 # ── Roof-age proxy ────────────────────────────────────────────────────────────
 # Asphalt shingle roofs typically last ~20-30 yrs. Building age is only a PROXY

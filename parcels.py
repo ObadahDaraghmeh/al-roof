@@ -1,9 +1,13 @@
 """
-parcels.py — pull residential parcels from the county auditor's ArcGIS service.
+parcels.py — pull residential parcels from one or more county GIS services.
 
 This is public county property data. We use it only to build a list of
 addresses to offer free inspections to. We deliberately do NOT pull or use any
 market-value / income proxy for prioritization.
+
+Each county (see SOURCES in config.py) names its fields differently, so we
+normalize every county's raw attributes onto the canonical keys the rest of the
+tool expects: PIN, OWNER, YRBLT, ADRNO, ADRSTR, ADRSUF, LOCATION, AuditorLink.
 """
 
 import time
@@ -11,30 +15,26 @@ import requests
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from config import (
-    BUTLER_PARCEL_URL, PARCEL_SR_FEET, OUTPUT_SR_LATLON,
-    SERVICE_AREA_BBOX, RESIDENTIAL_LUC,
-)
+from config import SOURCES, OUTPUT_SR_LATLON
 
 PAGE_SIZE = 2000
 
-# Fields pulled. Note: no value field — prioritization is by roof age and storm
-# exposure only, never by ability to pay.
-OUT_FIELDS = "PIN,OWNER,ADRNO,ADRSTR,ADRSUF,LOCATION,YRBLT,LUC,AuditorLink"
+CANONICAL_FIELDS = (
+    "PIN", "OWNER", "YRBLT", "ADRNO", "ADRSTR", "ADRSUF", "LOCATION", "AuditorLink",
+)
 
 
-def _query_params(offset: int) -> dict:
-    luc_list = ",".join(f"'{code}'" for code in RESIDENTIAL_LUC)
-    b = SERVICE_AREA_BBOX
+def _query_params(source: dict, offset: int) -> dict:
+    b = source["bbox"]
     return {
-        "where": f"LUC IN ({luc_list})",
+        "where": source.get("where", "1=1"),
         "geometry": f"{b['xmin']},{b['ymin']},{b['xmax']},{b['ymax']}",
         "geometryType": "esriGeometryEnvelope",
         "spatialRel": "esriSpatialRelIntersects",
-        "inSR": PARCEL_SR_FEET,
-        "outFields": OUT_FIELDS,
+        "inSR": source.get("in_sr", OUTPUT_SR_LATLON),
+        "outFields": source.get("out_fields", "*"),
         "returnGeometry": "true",
-        "outSR": OUTPUT_SR_LATLON,   # ask the server to return rings as lon/lat
+        "outSR": OUTPUT_SR_LATLON,   # rings come back as lon/lat for storm matching
         "resultOffset": offset,
         "resultRecordCount": PAGE_SIZE,
         "f": "json",
@@ -42,38 +42,63 @@ def _query_params(offset: int) -> dict:
 
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(min=2, max=30))
-def _fetch_page(offset: int) -> dict:
-    resp = requests.get(BUTLER_PARCEL_URL, params=_query_params(offset), timeout=30)
+def _fetch_page(source: dict, offset: int) -> dict:
+    resp = requests.get(source["url"], params=_query_params(source, offset), timeout=30)
     resp.raise_for_status()
     data = resp.json()
     if "error" in data:
-        raise RuntimeError(f"ArcGIS error: {data['error']}")
+        raise RuntimeError(f"ArcGIS error from {source['name']}: {data['error']}")
     return data
 
 
-def fetch_residential_parcels() -> list[dict]:
-    """Paginate the FeatureServer (max 2000/page) and return parcel features."""
-    parcels, offset = [], 0
+def _normalize(feature: dict, fieldmap: dict) -> dict:
+    """Rewrite a feature's attributes to the canonical keys using the county map."""
+    raw = feature.get("attributes", {}) or {}
+    attrs = {}
+    for canonical in CANONICAL_FIELDS:
+        county_field = fieldmap.get(canonical) or ""
+        attrs[canonical] = raw.get(county_field) if county_field else None
+    feature["attributes"] = attrs
+    return feature
+
+
+def _fetch_source(source: dict) -> list[dict]:
+    feats, offset = [], 0
     while True:
-        logger.info(f"Fetching parcels (offset={offset})")
-        data = _fetch_page(offset)
-        feats = data.get("features", [])
-        if not feats:
+        logger.info(f"  fetching {source['name']} (offset={offset})")
+        data = _fetch_page(source, offset)
+        page = data.get("features", [])
+        if not page:
             break
-        parcels.extend(feats)
-        logger.info(f"  +{len(feats)} (total {len(parcels)})")
+        feats.extend(_normalize(f, source["map"]) for f in page)
+        logger.info(f"    +{len(page)} ({source['name']} total {len(feats)})")
         if not data.get("exceededTransferLimit"):
             break
         offset += PAGE_SIZE
         time.sleep(0.3)
-    logger.success(f"Total residential parcels: {len(parcels)}")
-    return parcels
+    logger.success(f"  {source['name']}: {len(feats)} parcels")
+    return feats
+
+
+def fetch_residential_parcels() -> list[dict]:
+    """Pull residential parcels from every ENABLED source and combine them."""
+    all_feats: list[dict] = []
+    enabled = [s for s in SOURCES if s.get("enabled")]
+    if not enabled:
+        logger.warning("No enabled parcel sources in config.SOURCES")
+    for source in enabled:
+        if not source.get("url"):
+            logger.warning(f"Source '{source['name']}' is enabled but has no url; skipping")
+            continue
+        all_feats.extend(_fetch_source(source))
+    logger.success(f"Total residential parcels (all sources): {len(all_feats)}")
+    return all_feats
 
 
 def parcel_centroid_latlon(feature: dict):
     """
     Return (lat, lon) centroid of a parcel, or None.
-    Geometry is already EPSG:4326 (we requested outSR=4326), so ring points are
+    Geometry is EPSG:4326 (we requested outSR=4326), so ring points are
     [lon, lat]. A vertex-average centroid is plenty accurate for a "within N
     miles of a storm" test.
     """
