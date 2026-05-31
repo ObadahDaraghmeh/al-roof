@@ -9,6 +9,8 @@ Nothing here claims to have looked at the roof itself, so nothing here should
 ever be repeated to a homeowner as if it were a finding about their roof.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date
 

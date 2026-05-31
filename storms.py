@@ -14,6 +14,8 @@ Hail Size is in 1/100 inch (100 = 1.00"). Wind Speed is in knots ("UNK" when a
 report is damage-only with no measured speed).
 """
 
+from __future__ import annotations
+
 import csv
 import io
 import math
