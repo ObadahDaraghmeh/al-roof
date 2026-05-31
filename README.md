@@ -15,9 +15,13 @@ signals that actually predict roof need:
   damaged. A human inspects the roof before anyone says anything about its
   condition. The priority column means "good candidate to *offer* an
   inspection," nothing more.
-- **No income / property-value targeting.** Market value is never fetched and
-  never used to prioritize. Doors are ranked by roof age and storm exposure
-  only.
+- **Property-value floor (opt-in).** The original design used no value data at
+  all. A market-value floor is now applied (`MIN_PROPERTY_VALUE` in `config.py`,
+  currently $200,000): homes below it are dropped from the list. Value is used
+  **only to filter** — it is never spoken to a homeowner, and priority is still
+  ranked by roof age + storm exposure. Set `MIN_PROPERTY_VALUE = None` to restore
+  the pure age/storm behavior. Be aware that filtering outreach by home value is
+  an ability-to-pay signal; keep the pitch to roof age and the dated storm.
 - **No aerial-imagery CV.** The previous version scored roofs off 2019 aerial
   imagery with classical CV that mostly detected algae streaks, shade, and
   shadows — not damage. That whole path is gone. (If you want imagery, it

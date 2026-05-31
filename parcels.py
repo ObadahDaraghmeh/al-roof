@@ -15,13 +15,22 @@ import requests
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from config import SOURCES, OUTPUT_SR_LATLON
+from config import SOURCES, OUTPUT_SR_LATLON, MIN_PROPERTY_VALUE
 
 PAGE_SIZE = 2000
 
 CANONICAL_FIELDS = (
-    "PIN", "OWNER", "YRBLT", "ADRNO", "ADRSTR", "ADRSUF", "LOCATION", "AuditorLink",
+    "PIN", "OWNER", "YRBLT", "ADRNO", "ADRSTR", "ADRSUF", "LOCATION",
+    "AuditorLink", "VALUE",
 )
+
+
+def _value_of(feature: dict):
+    v = (feature.get("attributes") or {}).get("VALUE")
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def _query_params(source: dict, offset: int) -> dict:
@@ -76,6 +85,18 @@ def _fetch_source(source: dict) -> list[dict]:
             break
         offset += PAGE_SIZE
         time.sleep(0.3)
+
+    # Optional property-value floor (opt-in; see MIN_PROPERTY_VALUE in config).
+    if MIN_PROPERTY_VALUE is not None and source["map"].get("VALUE"):
+        before = len(feats)
+        feats = [f for f in feats
+                 if (_value_of(f) is not None and _value_of(f) >= MIN_PROPERTY_VALUE)]
+        logger.info(
+            f"  {source['name']}: value floor ${MIN_PROPERTY_VALUE:,.0f} "
+            f"kept {len(feats)}, dropped {before - len(feats)} "
+            f"(below floor or no value on record)"
+        )
+
     logger.success(f"  {source['name']}: {len(feats)} parcels")
     return feats
 

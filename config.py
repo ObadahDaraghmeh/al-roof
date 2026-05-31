@@ -34,6 +34,13 @@ SERVICE_AREA_BBOX_LATLON = {
     "ymax":  39.65,   # north latitude
 }
 
+# ── Property-value floor (OPT-IN; reverses the original age/storm-only design) ─
+# If this is a number AND a source maps a "VALUE" field, homes whose market
+# value is below it are dropped from the list. Value is used ONLY to filter —
+# never spoken to a homeowner; the honest pitch stays roof age + storm exposure.
+# Set to None to restore the pure age/storm behavior.
+MIN_PROPERTY_VALUE = 200000
+
 SOURCES = [
     {
         "name": "Butler (Monroe)",
@@ -47,11 +54,12 @@ SOURCES = [
         "in_sr": 3735,
         "bbox": {"xmin": 1390000, "ymin": 465000, "xmax": 1470000, "ymax": 540000},
         "where": "LUC IN ('510','511','512')",   # 510/511/512 = 1-3 family homes
-        "out_fields": "PIN,OWNER,ADRNO,ADRSTR,ADRSUF,LOCATION,YRBLT,LUC,AuditorLink",
+        "out_fields": "PIN,OWNER,ADRNO,ADRSTR,ADRSUF,LOCATION,YRBLT,LUC,MKTVCurYr,AuditorLink",
         "map": {
             "PIN": "PIN", "OWNER": "OWNER", "YRBLT": "YRBLT",
             "ADRNO": "ADRNO", "ADRSTR": "ADRSTR", "ADRSUF": "ADRSUF",
             "LOCATION": "LOCATION", "AuditorLink": "AuditorLink",
+            "VALUE": "MKTVCurYr",   # market value, current year (auditor)
         },
     },
 
