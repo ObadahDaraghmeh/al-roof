@@ -36,9 +36,9 @@ SERVICE_AREA_BBOX = {
 }
 
 # Approximate center of your service area in (lat, lon). Used only to discard
-# storm reports from the rest of the country before matching. West Chester, OH:
-SERVICE_AREA_CENTER_LATLON = (39.34, -84.40)
-STORM_REGION_RADIUS_MI     = 40
+# storm reports from the rest of the country before matching. Cincinnati, OH:
+SERVICE_AREA_CENTER_LATLON = (39.10, -84.51)
+STORM_REGION_RADIUS_MI     = 50
 
 # Residential land-use codes: 510 single-family, 511 two-family, 512 three-family
 RESIDENTIAL_LUC = ("510", "511", "512")
