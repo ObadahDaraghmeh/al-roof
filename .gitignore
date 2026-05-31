@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+inspection_candidates.db
+inspection_candidates.csv
