@@ -56,7 +56,7 @@ ROOF_AGE_APPROACHING          = 15   # yrs: worth a courtesy inspection offer
 #   wind: Time,Speed,Location,County,State,Lat,Lon,Comments  (Speed = knots, or UNK)
 SPC_REPORTS_BASE = "https://www.spc.noaa.gov/climo/reports"
 
-STORM_LOOKBACK_DAYS    = 120    # how far back to pull reports
+STORM_LOOKBACK_DAYS    = 365    # how far back to pull reports (full year = catches the hail season)
 HAIL_DAMAGE_MIN_INCHES = 1.0    # 1.0"+ is the usual roof-damage threshold
 WIND_DAMAGE_MIN_KNOTS  = 52     # ~60 mph; severe wind that can lift shingles
 STORM_MATCH_RADIUS_MI  = 3.0    # flag a parcel within this distance of a report
