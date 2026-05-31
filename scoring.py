@@ -75,7 +75,7 @@ def score(feature: dict, storm: StormMatch) -> Candidate:
         when = storm.last_storm_day.isoformat() if storm.last_storm_day else "recently"
         reasons.append(
             f"Severe storm within {storm.nearest_mi} mi "
-            f"({', '.join(bits) or 'severe report'}; last {when})"
+            f"({', '.join(bits) or 'wind-damage report (no measured speed)'}; last {when})"
         )
 
     # Priority: storm exposure is the strongest reason to knock; age stacks with it.

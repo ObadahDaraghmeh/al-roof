@@ -58,7 +58,7 @@ SPC_REPORTS_BASE = "https://www.spc.noaa.gov/climo/reports"
 
 STORM_LOOKBACK_DAYS    = 365    # how far back to pull reports (full year = catches the hail season)
 HAIL_DAMAGE_MIN_INCHES = 1.0    # 1.0"+ is the usual roof-damage threshold
-WIND_DAMAGE_MIN_KNOTS  = 52     # ~60 mph; severe wind that can lift shingles
+WIND_DAMAGE_MIN_KNOTS  = 50     # official NWS severe-wind threshold (~58 mph)
 STORM_MATCH_RADIUS_MI  = 3.0    # flag a parcel within this distance of a report
 
 # ── Output ────────────────────────────────────────────────────────────────────

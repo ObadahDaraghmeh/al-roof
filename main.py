@@ -67,7 +67,8 @@ def run():
                 sev.append(f'{c["worst_hail_in"]:.2f}" hail')
             if c["worst_wind_kt"]:
                 sev.append(f'{c["worst_wind_kt"]:.0f} kt wind')
-            print(f"      Storm: {', '.join(sev)} within {c['nearest_storm_mi']} mi (last {c['last_storm_day']})")
+            detail = ', '.join(sev) or 'wind damage reported (no measured speed)'
+            print(f"      Storm: {detail} within {c['nearest_storm_mi']} mi (last {c['last_storm_day']})")
         print(f"      Action: {c['recommended_action']}")
         if c["auditor_link"]:
             print(f"      Auditor: {c['auditor_link']}")

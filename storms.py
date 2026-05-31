@@ -82,13 +82,20 @@ def _parse_wind(text: str, day: date) -> list[StormReport]:
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 7 or row[0].strip().lower() == "time":
             continue
+        try:
+            lat, lon = float(row[5]), float(row[6])
+        except (ValueError, IndexError):
+            continue
         spd_raw = row[1].strip().upper()
         if spd_raw in ("", "UNK"):
+            # Wind-DAMAGE report with no clocked speed: a spotter reported actual
+            # damage but no anemometer reading. Honest to count (real damage was
+            # reported here); magnitude 0.0 marks it as "reported, not measured".
+            out.append(StormReport("wind", 0.0, lat, lon, day, row[2].strip()))
             continue
         try:
             spd = float(spd_raw)
-            lat, lon = float(row[5]), float(row[6])
-        except (ValueError, IndexError):
+        except ValueError:
             continue
         if spd >= WIND_DAMAGE_MIN_KNOTS:
             out.append(StormReport("wind", spd, lat, lon, day, row[2].strip()))
