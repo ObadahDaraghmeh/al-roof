@@ -40,6 +40,20 @@ def main():
 
     meta = _get(url)
 
+    # A server/folder catalog lists "folders" and "services" (no layers/fields).
+    if ("services" in meta or "folders" in meta) and "fields" not in meta and not meta.get("layers"):
+        print(f"Catalog: {url}\n")
+        if meta.get("folders"):
+            print("Folders:")
+            for f in meta["folders"]:
+                print(f"  {f}")
+        if meta.get("services"):
+            print("\nServices (name : type):")
+            for s in meta["services"]:
+                print(f"  {s.get('name')} : {s.get('type')}")
+        print("\nNext: re-run with a FeatureServer/MapServer URL from above.")
+        return
+
     # A service root lists its layers (and has no "fields").
     layers = meta.get("layers")
     if layers and "fields" not in meta:
