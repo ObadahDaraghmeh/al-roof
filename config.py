@@ -98,6 +98,8 @@ SOURCES = [
         # vacant land and anything under $200k.
         "where": "CAGIS.AUDREAL_VW.CLASS >= 500 AND CAGIS.AUDREAL_VW.CLASS < 600",
         "out_fields": "*",
+        # Push the value floor to the server so we only download $200k+ parcels.
+        "value_sql": "CAGIS.AUDREAL_VW.MKT_TOTAL_VAL",
         "map": {
             "PIN": "HCE.ParcelFabric_Parcels.NAME",
             "OWNER": "CAGIS.AUDREAL_VW.OWNNM1",
@@ -109,20 +111,16 @@ SOURCES = [
             "AuditorLink": "",
             "VALUE": "CAGIS.AUDREAL_VW.MKT_TOTAL_VAL",
         },
-        # Year built lives in a separate building-info layer; look it up by
-        # parcel id and attach it to each parcel.
+        # Year built lives in a separate building-info layer; after we have the
+        # (few) $200k+ parcels, look up their year built by parcel id in batches.
         "yrblt_join": {
             "url": (
                 "https://cagisonline.hamilton-co.org/arcgis/rest/services"
                 "/COUNTYWIDE/AuditorParcelInformation/MapServer/17/query"
             ),
             "yrblt_field": "YEARBUILT",
-            "secondary_keys": ["PID", "PARCELID", "PROPTYID", "AUDPTYID"],
-            "primary_keys": [
-                "HCE.ParcelFabric_Parcels.NAME",
-                "CAGIS.AUDREAL_VW.PROPTYID",
-                "CAGIS.AUDREAL_VW.AUDPTYID",
-            ],
+            "primary_key": "HCE.ParcelFabric_Parcels.NAME",
+            "secondary_key": "PID",
         },
     },
     {

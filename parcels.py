@@ -33,10 +33,19 @@ def _value_of(feature: dict):
         return None
 
 
+def _effective_where(source: dict) -> str:
+    """Source's WHERE, with the value floor pushed server-side when possible."""
+    where = source.get("where", "1=1")
+    vsql = source.get("value_sql")
+    if vsql and MIN_PROPERTY_VALUE is not None:
+        where = f"({where}) AND {vsql} >= {MIN_PROPERTY_VALUE}"
+    return where
+
+
 def _query_params(source: dict, offset: int) -> dict:
     b = source["bbox"]
     return {
-        "where": source.get("where", "1=1"),
+        "where": _effective_where(source),
         "geometry": f"{b['xmin']},{b['ymin']},{b['xmax']},{b['ymax']}",
         "geometryType": "esriGeometryEnvelope",
         "spatialRel": "esriSpatialRelIntersects",
@@ -72,53 +81,48 @@ def _normalize(feature: dict, fieldmap: dict) -> dict:
 
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(min=2, max=30))
-def _fetch_join_page(join: dict, offset: int) -> dict:
+def _fetch_yrblt_batch(join: dict, ids: list[str]) -> dict:
+    sk, yf = join["secondary_key"], join["yrblt_field"]
+    inlist = ",".join("'" + str(i).replace("'", "") + "'" for i in ids)
     resp = requests.get(join["url"], params={
-        "where": join.get("where", "1=1"),
-        "outFields": "*",
+        "where": f"{sk} IN ({inlist})",
+        "outFields": f"{sk},{yf}",
         "returnGeometry": "false",
-        "resultOffset": offset,
-        "resultRecordCount": PAGE_SIZE,
         "f": "json",
     }, timeout=60)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    out = {}
+    for f in data.get("features", []):
+        a = f.get("attributes", {}) or {}
+        yr, v = a.get(yf), a.get(sk)
+        if yr and v not in (None, ""):
+            out[str(v).strip()] = yr
+    return out
 
 
-def _fetch_yrblt_lookup(join: dict) -> dict:
-    """Build {parcel-id -> year built} from a separate building-info layer."""
-    yf = join.get("yrblt_field", "YEARBUILT")
-    keys = join.get("secondary_keys", ["PID", "PARCELID", "PROPTYID"])
-    lookup, offset = {}, 0
-    while True:
-        logger.info(f"  year-built lookup (offset={offset}, have {len(lookup)})")
-        data = _fetch_join_page(join, offset)
-        feats = data.get("features", [])
-        if not feats:
-            break
-        for f in feats:
-            a = f.get("attributes", {}) or {}
-            yr = a.get(yf)
-            if not yr:
-                continue
-            for k in keys:
-                v = a.get(k)
-                if v not in (None, ""):
-                    lookup[str(v).strip()] = yr
-        if not data.get("exceededTransferLimit"):
-            break
-        offset += PAGE_SIZE
-        time.sleep(0.2)
-    logger.success(f"  year-built lookup ready: {len(lookup)} parcels")
+def _fetch_yrblt_lookup(join: dict, ids: set) -> dict:
+    """Year built for just the parcels we kept, looked up in batches of 200."""
+    ids = [i for i in ids if i not in (None, "")]
+    lookup = {}
+    for i in range(0, len(ids), 200):
+        batch = ids[i:i + 200]
+        try:
+            lookup.update(_fetch_yrblt_batch(join, batch))
+        except Exception as e:
+            logger.warning(f"  year-built batch failed: {e}")
+        if i % 2000 == 0:
+            logger.info(f"  year-built lookup: {len(lookup)} of {len(ids)} so far")
+        time.sleep(0.1)
+    logger.success(f"  year-built lookup ready: {len(lookup)}/{len(ids)} matched")
     return lookup
 
 
 def _fetch_source(source: dict) -> list[dict]:
     join = source.get("yrblt_join")
-    yr_lookup = _fetch_yrblt_lookup(join) if join else None
-    primary_keys = (join or {}).get("primary_keys", [])
+    primary_key = (join or {}).get("primary_key")
 
-    feats, offset = [], 0
+    feats, raws, ids, offset = [], [], set(), 0
     while True:
         logger.info(f"  fetching {source['name']} (offset={offset})")
         data = _fetch_page(source, offset)
@@ -128,21 +132,25 @@ def _fetch_source(source: dict) -> list[dict]:
         for f in page:
             raw = dict(f.get("attributes", {}) or {})
             nf = _normalize(f, source["map"])
-            if yr_lookup is not None:
-                yr = None
-                for k in primary_keys:
-                    v = raw.get(k)
-                    if v not in (None, ""):
-                        yr = yr_lookup.get(str(v).strip())
-                        if yr:
-                            break
-                nf["attributes"]["YRBLT"] = yr
             feats.append(nf)
+            if join:
+                raws.append(raw)
+                v = raw.get(primary_key)
+                if v not in (None, ""):
+                    ids.add(str(v).strip())
         logger.info(f"    +{len(page)} ({source['name']} total {len(feats)})")
         if not data.get("exceededTransferLimit"):
             break
         offset += PAGE_SIZE
         time.sleep(0.3)
+
+    if join:
+        lookup = _fetch_yrblt_lookup(join, ids)
+        for nf, raw in zip(feats, raws):
+            v = raw.get(primary_key)
+            nf["attributes"]["YRBLT"] = (
+                lookup.get(str(v).strip()) if v not in (None, "") else None
+            )
 
     # Optional property-value floor (opt-in; see MIN_PROPERTY_VALUE in config).
     if MIN_PROPERTY_VALUE is not None and source["map"].get("VALUE"):
